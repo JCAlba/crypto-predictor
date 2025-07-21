@@ -21,16 +21,15 @@ def fetch_top_50_coins():
     params = {
         'vs_currency': 'usd',
         'order': 'market_cap_desc',
-        'per_page': 50,
-        'page': 1,
-        'sparkline': 'false',
-        'price_change_percentage': '24h'  # optional, safe to include
+        'per_page': '50',
+        'page': '1',
+        'sparkline': 'false'
     }
     headers = {
         'Accept': 'application/json'
     }
     res = requests.get(url, headers=headers, params=params)
-    res.raise_for_status()  # will raise if 4xx/5xx error
+    res.raise_for_status()
     return res.json()
 
 def fetch_coin_history(coin_id):
