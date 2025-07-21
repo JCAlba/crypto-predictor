@@ -26,15 +26,12 @@ def fetch_top_50_coins():
         'page': '1',
         'sparkline': 'false'
     }
-    headers = {
-        'Accept': 'application/json'
-    }
-    res = requests.get(url, headers=headers, params=params)
+    res = requests.get(url, headers=HEADERS, params=params)
     res.raise_for_status()
     return res.json()
 
 def fetch_coin_history(coin_id):
-    safe_id = quote(coin_id)  # Handles special characters like dashes or slashes
+    safe_id = quote(coin_id)
     url = f'https://api.coingecko.com/api/v3/coins/{safe_id}/market_chart'
     params = {'vs_currency': 'usd', 'days': '30', 'interval': 'daily'}
     res = requests.get(url, headers=HEADERS, params=params)
@@ -60,7 +57,7 @@ def extract_predictions(forecast):
 
 def get_current_batch_index():
     now = datetime.utcnow()
-    return (now.minute // 5) % 5  # Values: 0, 1, 2, 3, 4
+    return (now.minute // 5) % 5  # 0–4
 
 def main():
     timestamp = datetime.utcnow().isoformat()
@@ -72,7 +69,7 @@ def main():
 
     logging.info(f"🔁 Running batch {batch_index + 1}/5 — coins {start + 1} to {end}")
 
-    for coin in coins:
+    for coin in selected:
         logging.info(f"⏳ Predicting {coin['name']}...")
         try:
             df = fetch_coin_history(coin['id'])
@@ -92,18 +89,13 @@ def main():
                 'next_month': prediction['next_month']
             }
 
-            response = supabase.table("predictions").insert(payload).execute()
-
+            supabase.table("predictions").insert(payload).execute()
             logging.info(f"✅ Saved prediction for {coin['name']}")
-        
         except Exception as e:
             logging.warning(f"⚠️ Skipped {coin['id']}: {e}")
 
-        # ✅ Always sleep, even if error occurred
+        logging.info("😴 Sleeping for 10 seconds...")
         time.sleep(10)
-
-        except Exception as e:
-            logging.warning(f"⚠️ Skipped {coin['id']}: {e}")
 
 if __name__ == "__main__":
     main()
