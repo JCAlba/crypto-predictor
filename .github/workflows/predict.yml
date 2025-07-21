@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas prophet python-dotenv supabase
+          pip install requests pandas prophet python-dotenv supabase
 
       - name: Run prediction script
         env:
