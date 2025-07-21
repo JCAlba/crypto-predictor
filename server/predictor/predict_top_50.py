@@ -6,6 +6,7 @@ from supabase import create_client, Client
 from prophet import Prophet
 import pandas as pd
 import requests
+from urllib.parse import quote
 
 # Supabase setup
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -33,9 +34,10 @@ def fetch_top_50_coins():
     return res.json()
 
 def fetch_coin_history(coin_id):
-    url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart'
+    safe_id = quote(coin_id)  # Handles special characters like dashes or slashes
+    url = f'https://api.coingecko.com/api/v3/coins/{safe_id}/market_chart'
     params = {'vs_currency': 'usd', 'days': '30', 'interval': 'daily'}
-    res = requests.get(url, headers=HEADERS, timeout=30)
+    res = requests.get(url, headers=HEADERS, params=params)
     res.raise_for_status()
     prices = res.json().get('prices', [])
     df = pd.DataFrame(prices, columns=['ds', 'y'])
@@ -70,7 +72,7 @@ def main():
 
     logging.info(f"🔁 Running batch {batch_index + 1}/5 — coins {start + 1} to {end}")
 
-    for coin in selected:
+    for coin in coins:
         logging.info(f"⏳ Predicting {coin['name']}...")
         try:
             df = fetch_coin_history(coin['id'])
@@ -90,15 +92,15 @@ def main():
                 'next_month': prediction['next_month']
             }
 
-            result = supabase.table("predictions").insert(payload).execute()
+            response = supabase.table("predictions").insert(payload).execute()
 
-            # Check result using HTTPX response
-            if hasattr(result, "status_code") and result.status_code >= 300:
-                logging.warning(f"❌ Failed to insert {coin['name']}")
-            else:
-                logging.info(f"✅ Stored {coin['name']} prediction")
+            logging.info(f"✅ Saved prediction for {coin['name']}")
+        
+        except Exception as e:
+            logging.warning(f"⚠️ Skipped {coin['id']}: {e}")
 
-            time.sleep(5)  # avoid rate limits
+        # ✅ Always sleep, even if error occurred
+        time.sleep(10)
 
         except Exception as e:
             logging.warning(f"⚠️ Skipped {coin['id']}: {e}")
