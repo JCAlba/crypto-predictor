@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  predictor:
+    build: ./server/predictor
+    ports:
+      - "5001:5001"
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      - PREDICTOR_URL=http://predictor:5001
+    depends_on:
+      - predictor
