@@ -1,17 +1,18 @@
-import requests
-import pandas as pd
 import os
-from prophet import Prophet
-from datetime import datetime, timedelta
 import time
 import logging
+from datetime import datetime
 from supabase import create_client, Client
+from prophet import Prophet
+import pandas as pd
+import requests
 
-logging.basicConfig(level=logging.INFO)
-
+# Supabase setup
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+logging.basicConfig(level=logging.INFO)
 
 HEADERS = {'accept': 'application/json'}
 
@@ -24,46 +25,16 @@ def fetch_top_50_coins():
         'page': 1,
         'sparkline': False
     }
-    res = requests.get(url, headers=HEADERS, params=params)
+    res = requests.get(url, headers=HEADERS, timeout=30)
     res.raise_for_status()
     return res.json()
 
-def fetch_from_cache(coin_id):
-    response = supabase.table("history_cache").select("*").eq("coin_id", coin_id).execute()
-    if not response.data:
-        return None
-    row = response.data[0]
-    updated_at = datetime.fromisoformat(row['updated_at'].replace("Z", "+00:00"))
-    if datetime.utcnow() - updated_at > timedelta(hours=12):
-        return None
-    prices = row['prices']
-    df = pd.DataFrame(prices, columns=['ds', 'y'])
-    df['ds'] = pd.to_datetime(df['ds'])
-    return df
-
-def save_to_cache(coin_id, prices):
-    supabase.table("history_cache").upsert({
-        "coin_id": coin_id,
-        "updated_at": datetime.utcnow().isoformat(),
-        "prices": prices
-    }).execute()
-
 def fetch_coin_history(coin_id):
-    df = fetch_from_cache(coin_id)
-    if df is not None:
-        logging.info(f"💾 Loaded cached history for {coin_id}")
-        return df
-
-    logging.info(f"🌐 Fetching new history for {coin_id}")
     url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart'
     params = {'vs_currency': 'usd', 'days': '30', 'interval': 'daily'}
-    res = requests.get(url, headers=HEADERS, params=params)
+    res = requests.get(url, headers=HEADERS, timeout=30)
     res.raise_for_status()
     prices = res.json().get('prices', [])
-
-    # Save for caching
-    save_to_cache(coin_id, prices)
-
     df = pd.DataFrame(prices, columns=['ds', 'y'])
     df['ds'] = pd.to_datetime(df['ds'], unit='ms')
     return df
@@ -82,13 +53,22 @@ def extract_predictions(forecast):
         'next_month': round(float(forecast.iloc[-1]['yhat']), 2)
     }
 
+def get_current_batch_index():
+    now = datetime.utcnow()
+    return (now.minute // 5) % 5  # Values: 0, 1, 2, 3, 4
+
 def main():
     timestamp = datetime.utcnow().isoformat()
     coins = fetch_top_50_coins()
-    logging.info(f"🔍 Fetched {len(coins)} coins")
+    batch_index = get_current_batch_index()
+    start = batch_index * 10
+    end = start + 10
+    selected = coins[start:end]
 
-    for coin in coins:
-        logging.info(f"⏳ Processing {coin['name']}...")
+    logging.info(f"🔁 Running batch {batch_index + 1}/5 — coins {start + 1} to {end}")
+
+    for coin in selected:
+        logging.info(f"⏳ Predicting {coin['name']}...")
         try:
             df = fetch_coin_history(coin['id'])
             forecast = predict_with_prophet(df)
@@ -107,12 +87,18 @@ def main():
                 'next_month': prediction['next_month']
             }
 
-            supabase.table("predictions").insert(payload).execute()
-            logging.info(f"✅ Saved prediction for {coin['name']}")
-            time.sleep(0.5)
+            result = supabase.table("predictions").insert(payload).execute()
+
+            # Check result using HTTPX response
+            if hasattr(result, "status_code") and result.status_code >= 300:
+                logging.warning(f"❌ Failed to insert {coin['name']}")
+            else:
+                logging.info(f"✅ Stored {coin['name']} prediction")
+
+            time.sleep(5)  # avoid rate limits
 
         except Exception as e:
             logging.warning(f"⚠️ Skipped {coin['id']}: {e}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
