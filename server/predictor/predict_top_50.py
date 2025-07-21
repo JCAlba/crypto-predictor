@@ -2,16 +2,13 @@ import requests
 import pandas as pd
 import os
 from prophet import Prophet
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timedelta
 import time
-import json
 import logging
 from supabase import create_client, Client
 
 logging.basicConfig(level=logging.INFO)
 
-# Supabase setup
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -31,12 +28,42 @@ def fetch_top_50_coins():
     res.raise_for_status()
     return res.json()
 
+def fetch_from_cache(coin_id):
+    response = supabase.table("history_cache").select("*").eq("coin_id", coin_id).execute()
+    if not response.data:
+        return None
+    row = response.data[0]
+    updated_at = datetime.fromisoformat(row['updated_at'].replace("Z", "+00:00"))
+    if datetime.utcnow() - updated_at > timedelta(hours=12):
+        return None
+    prices = row['prices']
+    df = pd.DataFrame(prices, columns=['ds', 'y'])
+    df['ds'] = pd.to_datetime(df['ds'])
+    return df
+
+def save_to_cache(coin_id, prices):
+    supabase.table("history_cache").upsert({
+        "coin_id": coin_id,
+        "updated_at": datetime.utcnow().isoformat(),
+        "prices": prices
+    }).execute()
+
 def fetch_coin_history(coin_id):
+    df = fetch_from_cache(coin_id)
+    if df is not None:
+        logging.info(f"💾 Loaded cached history for {coin_id}")
+        return df
+
+    logging.info(f"🌐 Fetching new history for {coin_id}")
     url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart'
     params = {'vs_currency': 'usd', 'days': '30', 'interval': 'daily'}
     res = requests.get(url, headers=HEADERS, params=params)
     res.raise_for_status()
     prices = res.json().get('prices', [])
+
+    # Save for caching
+    save_to_cache(coin_id, prices)
+
     df = pd.DataFrame(prices, columns=['ds', 'y'])
     df['ds'] = pd.to_datetime(df['ds'], unit='ms')
     return df
@@ -49,13 +76,10 @@ def predict_with_prophet(df):
     return forecast
 
 def extract_predictions(forecast):
-    next_day = forecast.iloc[-30]['yhat']
-    next_week = forecast.iloc[-23]['yhat']
-    next_month = forecast.iloc[-1]['yhat']
     return {
-        'next_day': round(float(next_day), 2),
-        'next_week': round(float(next_week), 2),
-        'next_month': round(float(next_month), 2)
+        'next_day': round(float(forecast.iloc[-30]['yhat']), 2),
+        'next_week': round(float(forecast.iloc[-23]['yhat']), 2),
+        'next_month': round(float(forecast.iloc[-1]['yhat']), 2)
     }
 
 def main():
@@ -83,13 +107,9 @@ def main():
                 'next_month': prediction['next_month']
             }
 
-            response = supabase.table("predictions").insert(payload).execute()
-
-            if response.status_code >= 300:
-                logging.error(f"❌ Failed to save {coin['name']} to Supabase: {response.json()}")
-            else:
-                logging.info(f"✅ Saved prediction for {coin['name']}")
-            time.sleep(5)  # Respect API rate limits
+            supabase.table("predictions").insert(payload).execute()
+            logging.info(f"✅ Saved prediction for {coin['name']}")
+            time.sleep(0.5)
 
         except Exception as e:
             logging.warning(f"⚠️ Skipped {coin['id']}: {e}")
