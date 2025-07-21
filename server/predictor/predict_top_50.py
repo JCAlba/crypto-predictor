@@ -72,7 +72,7 @@ def main():
 
             payload = {
                 'timestamp': timestamp,
-                'id': coin['id'],
+                'coin_id': coin['id'],
                 'name': coin['name'],
                 'symbol': coin['symbol'],
                 'image': coin['image'],
@@ -89,7 +89,7 @@ def main():
                 logging.error(f"❌ Failed to save {coin['name']} to Supabase: {response.json()}")
             else:
                 logging.info(f"✅ Saved prediction for {coin['name']}")
-            time.sleep(2.5)  # Respect API rate limits
+            time.sleep(5)  # Respect API rate limits
 
         except Exception as e:
             logging.warning(f"⚠️ Skipped {coin['id']}: {e}")
