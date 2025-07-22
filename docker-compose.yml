@@ -16,6 +16,8 @@ services:
       - "4000:4000"
     environment:
       - PREDICTOR_URL=http://predictor:5001
+    env_file:
+      - ./server/.env
     depends_on:
       - predictor
     networks:

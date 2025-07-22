@@ -8,6 +8,7 @@ COPY package*.json ./
 
 # Optional: Ensure node_modules is separate for caching
 RUN npm install
+RUN npm install dotenv
 
 COPY . .
 
