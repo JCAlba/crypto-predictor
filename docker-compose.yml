@@ -5,6 +5,8 @@ services:
     build: ./server/predictor
     ports:
       - "5001:5001"
+    networks:
+      - app-net
 
   backend:
     build:
@@ -16,3 +18,24 @@ services:
       - PREDICTOR_URL=http://predictor:5001
     depends_on:
       - predictor
+    networks:
+      - app-net
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+    depends_on:
+      - backend
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge

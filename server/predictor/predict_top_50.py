@@ -8,12 +8,13 @@ import pandas as pd
 import requests
 from urllib.parse import quote
 
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+
 # Supabase setup
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-logging.basicConfig(level=logging.INFO)
 
 HEADERS = {'accept': 'application/json'}
 
@@ -57,7 +58,7 @@ def extract_predictions(forecast):
 
 def get_current_batch_index():
     now = datetime.utcnow()
-    return (now.minute // 5) % 5  # 0–4
+    return (now.minute // 5) % 5  # Run 10 coins per 5-min batch
 
 def main():
     timestamp = datetime.utcnow().isoformat()
@@ -69,9 +70,21 @@ def main():
 
     logging.info(f"🔁 Running batch {batch_index + 1}/5 — coins {start + 1} to {end}")
 
+    # Cache all 50 in Supabase
+    for coin in coins:
+        supabase.table("coins").upsert({
+            'id': coin['id'],
+            'name': coin['name'],
+            'symbol': coin['symbol'],
+            'image': coin['image'],
+            'market_cap': coin['market_cap'],
+            'current_price': coin['current_price'],
+            'last_fetched': timestamp
+        }).execute()
+
     for coin in selected:
-        logging.info(f"⏳ Predicting {coin['name']}...")
         try:
+            logging.info(f"⏳ Predicting {coin['name']}...")
             df = fetch_coin_history(coin['id'])
             forecast = predict_with_prophet(df)
             prediction = extract_predictions(forecast)
@@ -93,7 +106,6 @@ def main():
             logging.info(f"✅ Saved prediction for {coin['name']}")
         except Exception as e:
             logging.warning(f"⚠️ Skipped {coin['id']}: {e}")
-
         logging.info("😴 Sleeping for 10 seconds...")
         time.sleep(10)
 

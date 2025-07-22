@@ -1,18 +1,27 @@
 const express = require('express');
-const axios = require('axios');
 const router = express.Router();
+const { createClient } = require('@supabase/supabase-js');
 
-const PREDICTOR_URL = process.env.PREDICTOR_URL || 'http://predictor:5001';
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-// GET all predictions (no symbol param)
+// Fetch latest predictions from the last hour
 router.get('/', async (req, res) => {
-  try {
-    const response = await axios.get(`${PREDICTOR_URL}/predict`);
-    res.json(response.data);
-  } catch (err) {
-    console.error('Prediction error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch all predictions' });
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('predictions')
+    .select('*')
+    .gte('updated_at', oneHourAgo);
+
+  if (error) {
+    console.error('Supabase fetch error:', error.message);
+    return res.status(500).json({ error: 'Failed to fetch predictions' });
   }
+
+  res.json(data);
 });
 
 module.exports = router;
