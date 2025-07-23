@@ -1,3 +1,5 @@
+import React from 'react';
+
 const NavBar = () => {
     return (
       <nav className="bg-card shadow-md border-b border-neon px-6 py-4 flex justify-between items-center text-white">

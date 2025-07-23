@@ -3,6 +3,8 @@ import axios from 'axios';
 import DonationSection from '../components/DonationSection';
 import NavBar from '../components/NavBar';
 import Footer from '../components/Footer';
+import React from 'react';
+
 
 const Home = () => {
   const [predictions, setPredictions] = useState([]);

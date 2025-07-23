@@ -1,6 +1,7 @@
 import { QRCodeCanvas } from "qrcode.react";
 import { useState } from "react";
-import { Copy } from "lucide-react"; // or any other icon lib you use
+import { Copy } from "lucide-react";
+import React from 'react';
 
 const QrCard = ({ address, label, uriPrefix }) => {
   const [copied, setCopied] = useState(false);
