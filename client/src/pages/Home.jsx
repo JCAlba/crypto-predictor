@@ -7,6 +7,7 @@ import Footer from '../components/Footer';
 const Home = () => {
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const [timeframe, setTimeframe] = useState('next_day');
   const [displayPercent, setDisplayPercent] = useState(false);
@@ -15,19 +16,24 @@ const Home = () => {
 
   useEffect(() => {
     const fetchPredictions = async () => {
+      setLoading(true);
+      setError('');
       try {
-        // CHANGE THIS TO YOUR API, ADAPT IF NEEDED!
+        // Use relative path for Docker/production, localhost for dev if needed
         const res = await axios.get('/api/predictions');
-        // Handle either format: { predictions: [...] } or [...]
+        console.log('RAW backend response:', res.data);
+
+        let coins = [];
         if (Array.isArray(res.data)) {
-          setPredictions(res.data);
+          coins = res.data;
         } else if (Array.isArray(res.data.predictions)) {
-          setPredictions(res.data.predictions);
-        } else {
-          setPredictions([]);
+          coins = res.data.predictions;
         }
+        setPredictions(coins);
+        console.log('Predictions parsed:', coins);
       } catch (err) {
-        console.error(err);
+        setError('Could not fetch predictions. Try again soon!');
+        console.error('Prediction fetch error:', err);
       } finally {
         setLoading(false);
       }
@@ -46,11 +52,10 @@ const Home = () => {
   const sortedPredictions = useMemo(() => {
     const coins = [...filteredPredictions];
     return coins.sort((a, b) => {
-      // Defensive: fallback to 0 if missing
       const currA = a.current_price || 0;
       const currB = b.current_price || 0;
-      const predA = a.prediction?.[timeframe] ?? currA;
-      const predB = b.prediction?.[timeframe] ?? currB;
+      const predA = a[timeframe] ?? currA;
+      const predB = b[timeframe] ?? currB;
       const growthA = (predA - currA) / (currA || 1);
       const growthB = (predB - currB) / (currB || 1);
 
@@ -67,6 +72,7 @@ const Home = () => {
     });
   }, [filteredPredictions, timeframe, sortOption]);
 
+  // If loading, show animated loading
   if (loading) {
     return (
       <p className="text-neon text-center text-xl animate-pulse mt-10">Loading predictions...</p>
@@ -85,6 +91,13 @@ const Home = () => {
         </div>
 
         <h1 className="text-4xl font-bold text-center text-neon mb-10">Crypto Price Predictor</h1>
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-700 text-red-200 p-3 mb-6 text-center rounded shadow">
+            {error}
+          </div>
+        )}
 
         <div className="mb-8 flex flex-col md:flex-row gap-4 items-center justify-center">
           <div>
@@ -137,12 +150,12 @@ const Home = () => {
           </div>
         </div>
 
-        {sortedPredictions.length === 0 ? (
-          <p className="text-center text-gray-400">No coins match your search.</p>
+        {(!sortedPredictions || sortedPredictions.length === 0) && !error ? (
+          <p className="text-center text-gray-400">No coins match your search, or no data available.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
             {sortedPredictions.map((coin) => {
-              const predictedValue = coin.prediction?.[timeframe] ?? coin.current_price;
+              const predictedValue = coin[timeframe] ?? coin.current_price;
               const percentChange =
                 ((predictedValue - coin.current_price) / (coin.current_price || 1)) * 100;
 
